@@ -1,69 +1,20 @@
 import React, { useState, useEffect } from 'react';
+// FIX: Changing import paths to relative path within the 'src' directory
+import Card from './components/Card.jsx'; 
+import Header from './components/Header.jsx'; 
 
 // --- Card Data (Simulating files in public/images/) ---
-// NOTE: For this to work in a real environment, you must place these images 
-// (e.g., helmet.png, potion.png) inside your project's public/images/ directory.
 const cardImages = [
   { "src": "/images/img1.jpg", "name": "Helmet", matched: false },
   { "src": "/images/img2.jpg", "name": "Potion", matched: false },
-  { "src": "/images/img3.jpg", "name": "Sword", matched: false },
+  { "src": "/images/img3.jpg", "name": "Sword", "matched": false },
   { "src": "/images/img4.jpg", "name": "Shield", matched: false },
   { "src": "/images/img5.jpg", "name": "Ring", matched: false },
   { "src": "/images/img6.jpg", "name": "Book", matched: false },
 ];
 
-// --- Card Component ---
-const Card = ({ card, handleChoice, flipped, matched, disabled }) => {
-    // Determine the overlay class for matched cards
-    const cardClass = `
-        relative h-36 w-24 sm:h-40 sm:w-32 rounded-lg transition-transform duration-500 ease-in-out cursor-pointer shadow-xl
-        ${matched ? 'opacity-50 pointer-events-none' : ''}
-    `;
-
-    // Handle click event: only allow interaction if the card is not disabled and not already flipped
-    const handleClick = () => {
-        if (!disabled && !flipped) {
-            handleChoice(card);
-        }
-    };
-
-    return (
-        <div className={cardClass} onClick={handleClick}>
-            <div className={`absolute inset-0 transform ${flipped ? 'rotate-y-180' : ''} transition-transform duration-500 preserve-3d`}>
-                
-                {/* Back side (Visible when NOT Flipped - Default View) */}
-                <div className="absolute inset-0 backface-hidden bg-gray-800 rounded-lg flex items-center justify-center border-4 border-yellow-400 hover:bg-gray-700">
-                  <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2.5-1.5 2.5h-1v2m0 4h.01"></path>
-                  </svg>
-                </div>
-
-                {/* Front side (Visible when Flipped) - Starts rotated 180deg */}
-                <div className="absolute inset-0 backface-hidden transform rotate-y-180 bg-white p-2 rounded-lg flex items-center justify-center border-4 border-yellow-500">
-                    <img 
-                        src={card.src} 
-                        alt={card.name} 
-                        className="max-h-full max-w-full object-contain" 
-                        onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/100x120/805ad5/ffffff?text=IMG' }} // Fallback
-                    />
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// Tailwind utilities for 3D flip effect
-const style = `
-  .preserve-3d {
-    transform-style: preserve-3d;
-  }
-  .backface-hidden {
-    backface-visibility: hidden;
-  }
-  .rotate-y-180 {
-    transform: rotateY(180deg);
-  }
-`;
+// Define a constant for the storage key to avoid typos
+const STORAGE_KEY = 'verrdeterra_game';
 
 // --- Main Game Component ---
 export default function App() {
@@ -73,16 +24,80 @@ export default function App() {
   const [choiceOne, setChoiceOne] = useState(null);
   const [choiceTwo, setChoiceTwo] = useState(null);
   const [disabled, setDisabled] = useState(false); 
-  // Removed isInitialPreview state
 
-  // 1. Shuffle cards and start a new game
+  // --- LOCAL STORAGE FUNCTIONS ---
+
+  // Function to save the current game state to localStorage
+  const saveGame = (currentCards, currentTurns, currentMatches) => {
+    try {
+      // 1. Snapshot the required state variables
+      const gameState = {
+        cards: currentCards,
+        turns: currentTurns,
+        matches: currentMatches,
+        // We do NOT save choiceOne/Two as a paused game should reset the choices
+        // and prevent mid-turn persistence.
+      };
+      
+      // 2. Convert the object to a JSON string
+      const jsonState = JSON.stringify(gameState);
+      
+      // 3. Store the string in localStorage
+      localStorage.setItem(STORAGE_KEY, jsonState);
+      console.log("Game state saved successfully.");
+    } catch (e) {
+      console.error("Error saving game state to localStorage:", e);
+    }
+  };
+
+  // Function to load the saved game state from localStorage
+  const loadGame = () => {
+    try {
+      const jsonState = localStorage.getItem(STORAGE_KEY);
+      
+      if (jsonState) {
+        // 1. Convert the JSON string back into a JavaScript object
+        const gameState = JSON.parse(jsonState);
+        
+        // 2. Use the retrieved data to restore the state
+        setCards(gameState.cards);
+        setTurns(gameState.turns);
+        setMatches(gameState.matches);
+        
+        // Reset transient state
+        setChoiceOne(null);
+        setChoiceTwo(null);
+        setDisabled(false);
+        
+        console.log("Game state loaded from localStorage.");
+        return true; // Indicates a successful load
+      }
+    } catch (e) {
+      console.error("Error loading or parsing game state from localStorage:", e);
+      // If loading fails, clear the bad data to start fresh next time
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    return false; // Indicates no saved game was found
+  };
+  
+  // Function to clear saved game state (e.g., when a new game starts or game is won)
+  const clearGame = () => {
+      localStorage.removeItem(STORAGE_KEY);
+      console.log("Game state cleared.");
+  }
+
+  // --- LOGIC FUNCTIONS ---
+
+  // 1. Shuffle cards and start a new game (Now clears saved state)
   const shuffleCards = () => {
-    const shuffledCards = [...cardImages, ...cardImages] // Duplicate for pairs
-      .sort(() => Math.random() - 0.5) // Shuffle randomly
+    clearGame(); // Clear old state when starting new game
+      
+    const shuffledCards = [...cardImages, ...cardImages] 
+      .sort(() => Math.random() - 0.5) 
       .map((card, index) => ({ 
         ...card, 
-        id: index + 1, // Unique ID for each card instance
-        isFlipped: false, // Start flipped down
+        id: index + 1, 
+        isFlipped: false, 
         isMatched: false 
       }));
 
@@ -91,61 +106,30 @@ export default function App() {
     setCards(shuffledCards);
     setTurns(0);
     setMatches(0);
-    setDisabled(false); // Ensure clicks are enabled when a new game starts
+    setDisabled(false); 
   };
-
-  // Removed useEffect handling the initial card preview timeout
-
+  
   // 2. Handle a user choice (flip a card)
   const handleChoice = (card) => {
-    // Prevent interaction if disabled (by comparison)
     if (disabled) return;
 
     if (choiceOne) {
-      // Second choice
-      if (card.id !== choiceOne.id) { // Prevent clicking the same card twice
+      if (card.id !== choiceOne.id) { 
         setChoiceTwo(card);
       }
     } else {
-      // First choice
       setChoiceOne(card);
     }
 
-    // Immediately flip the selected card in the UI
     setCards(prevCards => 
       prevCards.map(c => c.id === card.id ? { ...c, isFlipped: true } : c)
     );
   };
 
-  // 3. Comparison logic (runs when choiceOne and choiceTwo are set)
-  useEffect(() => {
-    if (choiceOne && choiceTwo) {
-      setDisabled(true); // Disable further clicks during comparison
-
-      if (choiceOne.name === choiceTwo.name) {
-        // MATCH!
-        setCards(prevCards => {
-          return prevCards.map(card => {
-            if (card.name === choiceOne.name) {
-              return { ...card, isMatched: true };
-            } else {
-              return card;
-            }
-          });
-        });
-        setMatches(prevMatches => prevMatches + 1);
-        resetTurn();
-      } else {
-        // NO MATCH! Wait 1 second, then flip back
-        setTimeout(() => resetTurn(true), 1000);
-      }
-    }
-  }, [choiceOne, choiceTwo]);
-
   // 4. Reset choices and increment turn counter
   const resetTurn = (isMismatch = false) => {
+    // 1. Handle UI changes for mismatch (flip back)
     if (isMismatch) {
-        // If mismatch, flip the cards back down in the UI after the delay
         setCards(prevCards => 
             prevCards.map(card => {
                 if (card.id === choiceOne.id || card.id === choiceTwo.id) {
@@ -156,84 +140,119 @@ export default function App() {
             })
         );
     }
+    
+    // 2. Reset choices
     setChoiceOne(null);
     setChoiceTwo(null);
-    setTurns(prevTurns => prevTurns + 1);
-    setDisabled(false); // Enable clicks again
+    setDisabled(false); 
   };
 
-  // 5. Start the game automatically on first load
+  // --- EFFECT HOOKS ---
+
+  // 3. Comparison logic (runs when choiceOne and choiceTwo are set)
   useEffect(() => {
-    shuffleCards();
+    if (choiceOne && choiceTwo) {
+      setDisabled(true); 
+
+      if (choiceOne.name === choiceTwo.name) {
+        // MATCH!
+        setCards(prevCards => {
+          // Update card state to isMatched: true
+          const newCards = prevCards.map(card => {
+            if (card.name === choiceOne.name) {
+              return { ...card, isMatched: true };
+            } else {
+              return card;
+            }
+          });
+          return newCards;
+        });
+        
+        // 1. Update the official 'matches' count
+        setMatches(prevMatches => prevMatches + 1);
+        
+        // 2. Increment turn count (Match case)
+        setTurns(prevTurns => prevTurns + 1); 
+        
+        // 3. Reset choices
+        resetTurn();
+      } else {
+        // NO MATCH! Wait 1 second, then flip back and increment turns
+        setTimeout(() => {
+            setTurns(prevTurns => prevTurns + 1); 
+            resetTurn(true);
+        }, 1000);
+      }
+    }
+  }, [choiceOne, choiceTwo]); 
+
+  // 5. Initial Load logic (Now attempts to load saved game)
+  useEffect(() => {
+    const hasSavedGame = loadGame();
+    if (!hasSavedGame) {
+      // If no saved game is found, start a new one
+      shuffleCards();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 6. Check for Win condition
+  // 6. Persistence useEffect: Save game state every time CARDS or TURNS changes
+  useEffect(() => {
+    // Only attempt to save if the cards array is initialized (i.e., not empty on first render)
+    if (cards.length > 0) {
+        // Save the state, but exclude saving if the game is already won
+        const allMatched = cards.every(card => card.isMatched);
+        if (!allMatched) {
+             saveGame(cards, turns, matches);
+        }
+    }
+  }, [cards, turns, matches]); // Depend on the state that changes frequently
+
+  // 7. Check for Win condition (for display in Header)
   const isGameWon = matches === cardImages.length && matches > 0;
+
+  // 8. ✅ CRITICAL ADDITION: Dedicated Win Effect
+  // This ensures local storage is cleared reliably when the game is won.
+  useEffect(() => {
+    // Total unique cards is cardImages.length (6). Total matches needed is 6.
+    if (isGameWon) {
+        console.log("!!! GAME WON - Clearing Saved Game !!!");
+        clearGame();
+    }
+  }, [isGameWon]); // Re-run whenever the win condition changes
   
-  // 7. Render
+  // --- RENDER ---
   return (
-    <>
-      <style>{style}</style> {/* Apply 3D CSS utilities */}
-      <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center">
-        
-        {/* Header */}
-        <header className="w-full max-w-4xl flex justify-between items-center py-6 border-b border-gray-700 mb-8">
-          <h1 className="text-4xl font-extrabold text-yellow-400 tracking-wider">
-            Memory Quest
-          </h1>
-          <div className="flex space-x-4">
-              <p className="text-lg font-medium bg-gray-800 px-4 py-2 rounded-lg shadow-md">
-                Turns: <span className="text-yellow-400 font-bold">{turns}</span>
-              </p>
-              <button 
-                onClick={shuffleCards} 
-                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg shadow-lg transition duration-200 active:scale-95"
-                disabled={disabled} // Only disabled during the 1s mismatch delay
-              >
-                New Game
-              </button>
-          </div>
-        </header>
+    <div className="min-h-screen bg-gray-900 text-white p-4 flex flex-col items-center">
+      
+      <Header 
+        turns={turns}
+        shuffleCards={shuffleCards}
+        disabled={disabled}
+        isGameWon={isGameWon}
+      />
 
-        {/* Game Board */}
-        <main className="w-full max-w-4xl">
-            {isGameWon && (
-                <div className="text-center p-6 bg-green-600/70 text-white rounded-xl mb-6 shadow-2xl">
-                    <h2 className="text-3xl font-bold mb-2">🎉 Congratulations! You solved the puzzle in {turns} turns!</h2>
-                    <button 
-                        onClick={shuffleCards} 
-                        className="mt-3 bg-white text-green-800 font-bold py-2 px-6 rounded-full hover:bg-gray-100 transition"
-                    >
-                        Play Again
-                    </button>
-                </div>
-            )}
-            
-            {/* Grid Layout */}
-            <div className={`grid grid-cols-4 gap-3 sm:gap-6 justify-items-center`}>
-                {cards.map(card => (
-                    <Card 
-                        key={card.id}
-                        card={card}
-                        handleChoice={handleChoice}
-                        // A card is 'flipped' if it's the current choice OR permanently matched
-                        flipped={card.isFlipped || card.isMatched}
-                        matched={card.isMatched}
-                        // Disable clicks if a comparison is running, OR if the card is already matched
-                        disabled={disabled || card.isMatched}
-                    />
-                ))}
-            </div>
-        </main>
+      <main className="w-full max-w-4xl">
+        <div className={`grid grid-cols-4 gap-3 sm:gap-6 justify-items-center`}>
+          {cards.map(card => (
+            <Card 
+              key={card.id}
+              card={card}
+              handleChoice={handleChoice}
+              flipped={card.isFlipped || card.isMatched}
+              matched={card.isMatched}
+              disabled={disabled || card.isMatched}
+            />
+          ))}
+        </div>
+      </main>
 
-        {/* Footer for Context */}
-        <footer className="mt-12 text-gray-500 text-sm w-full max-w-4xl border-t border-gray-800 pt-4 text-center">
-            <p>
-                Memory Game built with React and Tailwind CSS. Images referenced from 
-                <code className="bg-gray-800 p-1 rounded">/public/images/</code>.
-            </p>
-        </footer>
-      </div>
-    </>
+      <footer className="mt-12 text-gray-500 text-sm w-full max-w-4xl border-t border-gray-800 pt-4 text-center">
+          <p>
+              Memory Game built with React and Tailwind CSS. Images referenced from 
+              <code className="bg-gray-800 p-1 rounded">/public/images/</code>.
+          </p>
+      </footer>
+    </div>
   );
 }
